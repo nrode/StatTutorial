@@ -42,6 +42,8 @@ data <- expand.grid(id=as.factor(1:n_ind), replicate=paste0("rep", 1:2))
 ```
 ## True value of the trait for each individual
 ```{r }
+## Set a seed so that results can be reproduced
+set.seed(123)
 
 ## Simulate true value of the trait for each individual
 true_trait_value <- rnorm(n=n_ind, mean = mean_trait, sd = sqrt(var_among))
