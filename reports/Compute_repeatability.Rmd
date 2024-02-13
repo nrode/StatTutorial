@@ -140,11 +140,13 @@ sigma(fit0)^2
 
 ```
 
-# Estimate repeatability by hand first method
+# Estimate repeatability by hand
 ## Fit complete model
 ```{r }
 ## Use the code from https://www.r-bloggers.com/2021/05/one-way-anova-by-hand/
 
+## Compute the error of each measurement under the complete model, i.e. the difference between each measurement and the mean of two measurements of the same individual
+## Compute the squared error of each measurement (complete model)
 complete <- data %>%  
   group_by(id) %>% 
   mutate(mean_trait_value = mean(observed_trait_value)) %>% #in complete model, fit is the group mean (i.e. mean of each individual) 
@@ -152,69 +154,72 @@ complete <- data %>%
   mutate(sq_error = error ^ 2) %>%
   ungroup()
 
+## Compute the N, the total number of observations and the SSE, the sum of the squared error of each measurement
+## Compute n, the number of groups in the complete model (ie. individuals in the dataset)
+## Compute df2, the residual degrees of freedom
 (complete <- complete %>% 
   summarise(N = n(), sse = sum(sq_error)) %>% 
   mutate(n = length(unique(data$id))) %>% 
-  mutate(df = N - n) %>% 
-  select(sse, df, N, n) %>% 
-  mutate(mse = sse / df) # mse = sigma squared 
+  mutate(df2 = N - n) %>% 
+  select(sse, df2, N, n) %>% 
+  mutate(mse = sse / df2) # mse = sigma squared 
 )
 
-
+## Check that the value computed by R is the same
+sigma(fit0)^2
 
 ```
 ## Fit reduced model
 ```{r }
 
+## Compute the error of each measurement according to the reduced model, i.e. the difference between each measurement and the overall mean across all measurements in the dataset
+## Compute the squared error of each measurement (reduced model)
 reduced <- data %>%  
   mutate(mean_trait_value = mean(observed_trait_value)) %>% #in reduced model, fit is the overall mean 
   mutate(error = mean_trait_value - observed_trait_value) %>% 
   mutate(sq_error = error ^ 2) %>%
   ungroup() 
 
+## Compute the N, the total number of observations and the SSE, the sum of the squared error of each measurement
+## Compute n, the number of groups in the reduced model (ie. 1 for the overall mean)
+## Compute df2, the residual degrees of freedom
 (reduced <- reduced %>% 
   summarise(N = n(), sse = sum(sq_error)) %>% # sse = sum square error
   mutate(n = 1) %>% 
-  mutate(df = N - n) %>% 
-  select(sse, df, N, n)
+  mutate(df2 = N - n) %>% 
+  select(sse, df2, N, n)
 )
 ```
 
 ## Compute the SSA, df and MSA explained by the complete model
 ```{r }
 
-## SSA
+## Residual variance of the reduced model explained by the complete model
 (explained_ssa <- reduced$sse - complete$sse)
 
-## dfA
-(explained_df <- reduced$df - complete$df)
+## df1 = number of groups (ie. individuals) - 1 (for the overall mean)
+(explained_df1 <- reduced$df2 - complete$df2)
 
-## MSA
-(explained_msa <- explained_ssa / explained_df)
+## MSA = SSA/df1
+(explained_msa <- explained_ssa / explained_df1)
 
-## Fratio
+## Fratio = MSA/MSE
 (f <- explained_msa / complete$mse)
 
 ## Compute P-value
-pf(f, explained_df, complete$df, lower.tail = F)
+pf(f, explained_df1, complete$df2, lower.tail = FALSE)
 ```
 
-## Calculate the repeatability
+## Compute the repeatability
 ```{r }
-## Degrees of freedom = number of individual - 1
-df_Among <- n_ind-1
+## Number of replicates
+num_rep <- complete$N/complete$n
 
-## residual degrees of freedom
-dfRes <- n_ind*(k_rep-1)
-
-## Within-group variance component = Residual variance
+## Within individual variance
 (VarWithin <- complete$mse)
 
-## Check that the value computed by R is the same
-sigma(fit0)^2
-
 ## Among individual variance 
-(VarAmong<- (explained_msa-VarWithin)/k_rep)
+(VarAmong<- (explained_msa-complete$mse)/num_rep)
 
 ## Observed repeatability
 (Repeatability <- VarAmong/(VarAmong+VarWithin))
