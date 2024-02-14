@@ -1,5 +1,5 @@
 ---
-title: "Compute repeatability"
+title: "Compute repeatability with R"
 author: "Nicolas RODE"
 date: "`r format(Sys.Date(), '%d-%B-%Y')`"
 output: 
@@ -104,8 +104,8 @@ data %>%
 table(data$id)
 
 ## Fit model with ANOVA
-fit0 <- aov(observed_trait_value ~ id, data = data)
-summary(fit0)
+fit1 <- aov(observed_trait_value ~ id, data = data)
+summary(fit1)
 
 ## Number of replicates per individual
 n0=k_rep
@@ -114,7 +114,7 @@ n0=k_rep
 df_Among <- n_ind-1
 
 ## Sum of squares among individuals
-SSA <- summary(fit0)[[1]]$`Sum Sq`[1] 
+SSA <- summary(fit1)[[1]]$`Sum Sq`[1] 
 
 ## Among-groups (ie individual) variance component
 MSA <- SSA/df_Among
@@ -123,13 +123,13 @@ MSA <- SSA/df_Among
 dfRes <- n_ind*(n0-1) 
 
 ## Sum of squares among replicates
-SSW <- summary(fit0)[[1]]$`Sum Sq`[2] 
+SSW <- summary(fit1)[[1]]$`Sum Sq`[2] 
 
 ## Within-group variance component = Residual variance
 (VarWithin <- SSW/dfRes)
 
 ## Check that the value computed by R is the same
-sigma(fit0)^2
+sigma(fit1)^2
 
 ## Among individual variance 
 (VarAmong<- (MSA-VarWithin)/n0)
@@ -168,7 +168,7 @@ complete <- data %>%
 )
 
 ## Check that the value computed by R is the same
-sigma(fit0)^2
+sigma(fit1)^2
 
 ```
 ## Fit reduced model
