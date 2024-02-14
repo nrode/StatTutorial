@@ -36,7 +36,7 @@ var_among=1
 var_within=0.1
 
 ## Create dataset
-data <- expand.grid(id=as.factor(1:n_ind), replicate=paste0("rep", 1:2))
+data <- expand.grid(id=as.factor(1:n_ind), replicate=paste0("rep", 1:k_rep))
 
 
 ```
@@ -73,6 +73,8 @@ p <- data %>%
           geom_vline(xintercept = 0, linetype="dotted", color = "red", linewidth=1) + ## Add mean of the trait
           stat_function(fun = dnorm, linewidth=1, linetype="dotted", color = "red", geom = "line", args = list(mean = 0, sd = sqrt(var_within))) 
 p
+
+head(data)
 ```
 
 ## Observed trait values
@@ -80,6 +82,8 @@ p
 ## Add new column with observed value of the trait for each replicate measurement of each individual
 data$observed_trait_value <- data$true_trait_value + data$measurement_error
 
+
+head(data)
 ## Histogram with the distribution of the trait values across the n_ind * k_rep measurements
 p <- data_frame(trait = true_trait_value) %>%
           ggplot(., aes(trait)) + 
@@ -96,7 +100,6 @@ data %>%
           geom_point() +
           geom_abline(intercept = 0, slope=1, linetype="dotted", color = "red", linewidth=1) 
 ```
-
 
 # Estimate repeatability with the ANOVA function
 ```{r }
@@ -139,6 +142,9 @@ sigma(fit1)^2
 
 ## Expected repeatability
 (R_expected=var_among/(var_among+var_within))
+
+## Expected variance
+(Var_R_expected=(2*(1-R_expected)^2*(1+(k_rep-1)*R_expected)^2)/(k_rep*(k_rep-1)*(n_ind-1)))
 
 ```
 
