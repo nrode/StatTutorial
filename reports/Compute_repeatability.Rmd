@@ -14,17 +14,36 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Simulate data
-## Enter values for simulations
+# Load packages required to run the script
 ```{r }
+
+## Packages to manipulate data: https://community.rstudio.com/t/what-is-the-difference-between-tidyr-and-dplyr/105880
+# if (!requireNamespace("dplyr", quietly = TRUE))
+#   install.packages("dplyr")
+# if (!requireNamespace("tidyr", quietly = TRUE))
+#   install.packages("tidyr")
+## Package to plot data
+# if (!requireNamespace("ggplot2", quietly = TRUE))
+#   install.packages("ggplot2")
+
+## Load installed packages
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 
+## Load function to simulate data and compute repeatability
+setwd(dirname(getwd()))
+source("R/simulate_obs_data.R")
+
+```
+# Simulate one dataset
+## Enter values for simulations
+```{r }
+
 ## Number of individual measured
-n_ind=30
+n_group=30
 ## Number of replicate per individual
-k_rep=2
+n0=2
 
 ## Mean of the trait in the population
 mean_trait=10
@@ -36,7 +55,7 @@ var_among=1
 var_within=0.1
 
 ## Create dataset
-data <- expand.grid(id=as.factor(1:n_ind), replicate=paste0("rep", 1:k_rep))
+data <- expand.grid(id=as.factor(1:n_group), replicate=paste0("rep", 1:n0))
 
 
 ```
@@ -46,9 +65,9 @@ data <- expand.grid(id=as.factor(1:n_ind), replicate=paste0("rep", 1:k_rep))
 set.seed(123)
 
 ## Simulate true value of the trait for each individual
-true_trait_value <- rnorm(n=n_ind, mean = mean_trait, sd = sqrt(var_among))
+true_trait_value <- rnorm(n=n_group, mean = mean_trait, sd = sqrt(var_among))
 
-## Histogram with the distribution of the trait values across the n_ind individuals
+## Histogram with the distribution of the trait values across the n_group individuals
 p <- data_frame(trait = true_trait_value) %>%
           ggplot(., aes(trait)) + 
           geom_histogram(aes(y = after_stat(density)), colour = "black") +
@@ -57,7 +76,7 @@ p <- data_frame(trait = true_trait_value) %>%
 p
 
 ## Add new column with true value of the trait for each individual
-data$true_trait_value <- rep(true_trait_value, k_rep)
+data$true_trait_value <- rep(true_trait_value, n0)
 
 ```
 
@@ -66,7 +85,7 @@ data$true_trait_value <- rep(true_trait_value, k_rep)
 ## Add new column with measurement error
 data$measurement_error <- rnorm(n=nrow(data), mean = 0, sd = sqrt(var_within))
 
-## Histogram with the distribution of the measurement error across the n_ind * k_rep measurements
+## Histogram with the distribution of the measurement error across the n_group * n0 measurements
 p <- data %>%
           ggplot(., aes(measurement_error)) + 
           geom_histogram(aes(y = after_stat(density)), colour = "black") +
@@ -82,9 +101,8 @@ head(data)
 ## Add new column with observed value of the trait for each replicate measurement of each individual
 data$observed_trait_value <- data$true_trait_value + data$measurement_error
 
-
 head(data)
-## Histogram with the distribution of the trait values across the n_ind * k_rep measurements
+## Histogram with the distribution of the trait values across the n_group * n0 measurements
 p <- data_frame(trait = true_trait_value) %>%
           ggplot(., aes(trait)) + 
           geom_histogram(aes(y = after_stat(density)), colour = "black") +
@@ -101,55 +119,46 @@ data %>%
           geom_abline(intercept = 0, slope=1, linetype="dotted", color = "red", linewidth=1) 
 ```
 
-# Estimate repeatability with the ANOVA function
+# Point estimate repeatability
+## Point estimate repeatability with the ANOVA function
 ```{r }
 ## Number of replicate per individual
 table(data$id)
 
-## Fit model with ANOVA
+## Fit reduced model with ANOVA
+fit0 <- aov(observed_trait_value ~ 1, data = data)
+summary(fit0)
+## Fit complete model with ANOVA
 fit1 <- aov(observed_trait_value ~ id, data = data)
 summary(fit1)
+## Compare the two models (the df and MS of the reduced model are automatically recalculated)
+anova(fit1)
 
 ## Number of replicates per individual
-n0=k_rep
-
-## Degrees of freedom = number of individual - 1
-df_Among <- n_ind-1
-
-## Sum of squares among individuals
-SSA <- summary(fit1)[[1]]$`Sum Sq`[1] 
-
-## Among-groups (ie individual) variance component
-MSA <- SSA/df_Among
-
-## residual degrees of freedom
-dfRes <- n_ind*(n0-1) 
-
-## Sum of squares among replicates
-SSW <- summary(fit1)[[1]]$`Sum Sq`[2] 
+n0
 
 ## Within-group variance component = Residual variance
-(VarWithin <- SSW/dfRes)
+(VarWithin <- MSW <- summary(fit1)[[1]]$`Mean Sq`[2])
 
 ## Check that the value computed by R is the same
 sigma(fit1)^2
 
+## Among-groups (ie individual) sum of square
+MSA <- summary(fit1)[[1]]$`Mean Sq`[1]
+
 ## Among individual variance 
-(VarAmong<- (MSA-VarWithin)/n0)
+(VarAmong<- (MSA-MSW)/n0)
 
 ## Observed repeatability
-(Repeatability <- VarAmong/(VarAmong+VarWithin))
+(R_observed <- VarAmong/(VarAmong+VarWithin))
 
 ## Expected repeatability
 (R_expected=var_among/(var_among+var_within))
 
-## Expected variance
-(Var_R_expected=(2*(1-R_expected)^2*(1+(k_rep-1)*R_expected)^2)/(k_rep*(k_rep-1)*(n_ind-1)))
-
 ```
 
-# Estimate repeatability by hand
-## Fit complete model
+## Pont estimate repeatability by hand
+### Fit complete model
 ```{r }
 ## Use the code from https://www.r-bloggers.com/2021/05/one-way-anova-by-hand/
 
@@ -166,18 +175,18 @@ complete <- data %>%
 ## Compute n, the number of groups in the complete model (ie. individuals in the dataset)
 ## Compute df2, the residual degrees of freedom
 (complete <- complete %>% 
-  summarise(N = n(), sse = sum(sq_error)) %>% 
+  summarise(N = n(), ssw = sum(sq_error)) %>% 
   mutate(n = length(unique(data$id))) %>% 
   mutate(df2 = N - n) %>% 
-  select(sse, df2, N, n) %>% 
-  mutate(mse = sse / df2) # mse = sigma squared 
+  select(ssw, df2, N, n) %>% 
+  mutate(msw = ssw / df2) # msw = sigma squared 
 )
 
 ## Check that the value computed by R is the same
 sigma(fit1)^2
 
 ```
-## Fit reduced model
+### Fit reduced model
 ```{r }
 
 ## Compute the error of each measurement according to the reduced model, i.e. the difference between each measurement and the overall mean across all measurements in the dataset
@@ -192,18 +201,18 @@ reduced <- data %>%
 ## Compute n, the number of groups in the reduced model (ie. 1 for the overall mean)
 ## Compute df2, the residual degrees of freedom
 (reduced <- reduced %>% 
-  summarise(N = n(), sse = sum(sq_error)) %>% # sse = sum square error
+  summarise(N = n(), ssw = sum(sq_error)) %>% # sse = sum square error
   mutate(n = 1) %>% 
   mutate(df2 = N - n) %>% 
-  select(sse, df2, N, n)
+  select(ssw, df2, N, n)
 )
 ```
 
-## Compute the SSA, df and MSA explained by the complete model
+### Compute the SSA, df and MSA explained by the complete model
 ```{r }
 
 ## Residual variance of the reduced model explained by the complete model
-(explained_ssa <- reduced$sse - complete$sse)
+(explained_ssa <- reduced$ssw - complete$ssw)
 
 ## df1 = number of groups (ie. individuals) - 1 (for the overall mean)
 (explained_df1 <- reduced$df2 - complete$df2)
@@ -211,27 +220,67 @@ reduced <- data %>%
 ## MSA = SSA/df1
 (explained_msa <- explained_ssa / explained_df1)
 
-## Fratio = MSA/MSE
-(f <- explained_msa / complete$mse)
+## Fratio = MSA/MSW
+(f <- explained_msa / complete$msw)
 
 ## Compute P-value
 pf(f, explained_df1, complete$df2, lower.tail = FALSE)
 ```
 
-## Compute the repeatability
+### Compute the repeatability
 ```{r }
 ## Number of replicates
 num_rep <- complete$N/complete$n
 
 ## Within individual variance
-(VarWithin <- complete$mse)
+(VarWithin <- complete$msw)
 
 ## Among individual variance 
-(VarAmong<- (explained_msa-complete$mse)/num_rep)
+(VarAmong<- (explained_msa-complete$msw)/num_rep)
 
 ## Observed repeatability
-(Repeatability <- VarAmong/(VarAmong+VarWithin))
+(R_observed <- VarAmong/(VarAmong+VarWithin))
 
 ## Expected repeatability
 (R_expected=var_among/(var_among+var_within))
+```
+
+# Interval estimate of repeatability
+## Compute interval estimate with Eq. 6 of Nakagawa & Schielzeth 2010
+```{r }
+
+## Expected standard error of the repeatability estimate (Eq. 6)
+(SE_R_expected=sqrt((2*(n0*n_group-1)*(1-R_expected)^2*(1+(n0-1)*R_expected)^2)/(n0^2*(n0*n_group-n_group)*(n_group-1))))
+
+## 95% Confidence Interval
+(CI <- c(lower95CI=R_observed+qt(.025, df = n_group-1)*SE_R_expected, upper95CI=R_observed+qt(.975, df = n_group-1)*SE_R_expected))
+```
+
+## Compute interval estimate with parametric bootstrapping
+```{r }
+## We assume that the fitted model is correct and that the distributions for the estimates are known (usually assuming normal distributions, cf Nakagawa & Schielzeth 2010).
+## Vector of seeds over used for simulations (https://r-coder.com/set-seed-r/)
+seed_vec <- 1:100
+
+## Compute 95% using parametric bootstrap
+## Simulate a dataset based on the estimates for the variances among and within groups (the mean does not matter to compute repeatability)
+boot_repeatability <- sapply(seed_vec, simulate_obs_data, n_group = 30, n0 = 2, mean_trait=0, var_among=VarAmong, var_within=VarWithin)
+
+## Compute the standard error associated with the point estimate
+sd(boot_repeatability)
+
+## Histogram of the estimates
+p <- data_frame(Estimated_repeatability = boot_repeatability) %>%
+          ggplot(., aes(Estimated_repeatability)) + 
+          geom_histogram(aes(y = after_stat(density)), colour = "black") +
+          geom_vline(xintercept = R_expected, linetype="solid", color = "blue", linewidth=1)+
+  annotate("text", x = R_expected-0.025, y = 21, label = "Expected repeatability", color = "blue") +
+          geom_vline(xintercept = R_observed, linetype="solid", color = "red", linewidth=1) + ## Add observed of the repeatability +
+    annotate("text", x = R_observed+0.025, y = 21, label = "Observed repeatability", color = "red") +
+          geom_vline(xintercept = CI[1], linetype="dotted", color = "red", linewidth=1) + ## Add lower 95%CI
+          geom_vline(xintercept = CI[2], linetype="dotted", color = "red", linewidth=1) + ## Add upper 95%CI
+  annotate("text", x = CI[1]-0.025, y = 10, label = "95% confidence interval", color = "red")
+p
+
+## Conclusion: the approximation for the computation of the 95%CI using Eq6 seems to be OK
 ```
