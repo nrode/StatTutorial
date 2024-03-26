@@ -1,0 +1,383 @@
+---
+title: "Compute probability and cumulative distribution functions"
+author: "Nicolas Rode"
+date: "`r format(Sys.Date(), '%d-%B-%Y')`"
+output: 
+  html_document:
+    theme: "journal"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r }
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+```
+
+
+# Poisson distribution 
+Used to model count data where the events occur randomly and independently at a constant rate
+Range: {0, 1, 2, 3, ...}
+Examples: Number of accidents in a day, number of calls received by a customer service center
+Probability mass function: P(X=xi) = (exp^(-λ) λ^xi) / xi!
+Graph: distribution skewed to the right
+Assumptions: The mean and variance of the distribution are equal
+Equations: E(X) = Var(X) = λ 
+
+## PDF
+### Compute PDF
+```{r}
+
+## Define function
+compute_pdf <- function(lambda, xi){
+  (exp(-lambda)*lambda^xi) / factorial(xi)
+}
+
+## Compute the probability of observing zero larvae
+compute_pdf(lambda=1, xi=0)
+```
+
+### Plot PDF
+```{r}
+p <- ggplot(data.frame(x = 0:20), aes(x)) +
+    stat_function(geom = "point", n = 21, fun = dpois, args = list(lambda = 1), color = "orange")+
+    stat_function(geom = "point", n = 21, fun = dpois, args = list(lambda = 4), color = "purple")+
+    stat_function(geom = "point", n = 21, fun = dpois, args = list(lambda = 10), color = "lightblue")+
+    annotate("text", x=15, y=0.35, label= "lambda == 1", parse = TRUE, color = "orange")+
+    annotate("text", x=15, y=0.3, label= "lambda == 4", parse = TRUE, color = "purple")+
+    annotate("text", x=15, y=0.25, label= "lambda == 10", parse = TRUE, color = "lightblue")+ 
+  xlab(bquote(x[i]))+ 
+  ylab(bquote(P(X==x[i])))
+p
+
+p1 <- p +
+  stat_function(geom = "area", aes(x), n = 4, fun = dpois, args = list(lambda = 1), xlim = c(0, 3), fill = "orange", alpha = 0.5)
+p1
+
+p2 <- p1 +
+  stat_function(geom = "area", aes(x), n = 4, fun = dpois, args = list(lambda = 4), xlim = c(0, 3), fill = "purple", alpha = 0.5)
+p2
+p3 <- p2 +
+  stat_function(geom = "area", aes(x), n = 4, fun = dpois, args = list(lambda = 10), xlim = c(0, 3), fill = "lightblue", alpha = 0.5)
+p3
+
+```
+## CDF
+```{r}
+
+p4 <- ggplot(data.frame(x = 0:20), aes(x)) +
+    stat_function(geom = "point", n = 21, fun = ppois, args = list(lambda = 1), color = "orange")+
+    stat_function(geom = "point", n = 21, fun = ppois, args = list(lambda = 4), color = "purple")+
+    stat_function(geom = "point", n = 21, fun = ppois, args = list(lambda = 10), color = "lightblue")+
+    annotate("text", x=15, y=0.75, label= "lambda == 1", parse = TRUE, color = "orange")+
+    annotate("text", x=15, y=0.7, label= "lambda == 4", parse = TRUE, color = "purple")+
+    annotate("text", x=15, y=0.65, label= "lambda == 10", parse = TRUE, color = "lightblue")+ 
+  xlab(bquote(x[i]))+ 
+  ylab(bquote(P(X<=x[i])))
+p4
+
+ggarrange(p, p4, ncol = 2, nrow = 1)
+```
+## Simulation
+### Plot distribution
+```{r}
+# Simulate data with rpois
+set.seed(123)  # for reproducibility
+data <- data.frame(y=rpois(n = 5, lambda = 1))
+
+# If the minimum value is zero or a positive integer, then the variable might be a count variable.
+min(data)  # check minimum value
+
+## Check probability of each type of event
+table(data)  # count occurrences of each value
+prop.table(table(data))  # calculate proportion of occurrences
+
+
+## Plot observed distribution and expected PDF
+p <- data %>%
+  ggplot2::ggplot(aes(y)) + 
+  geom_histogram(aes(y = after_stat(count / sum(count))), fill = "orange", alpha = 0.2, binwidth = 0.25)+
+  labs(title = "Probability Mass Function", x = "Value taken by X", y = "Proportion of events") + 
+  stat_function(geom = "point", n = 4, fun = dpois, args = list(lambda = 1), color = "orange")
+p
+
+# check mean and variance are equal or not
+mean(data$y)  # calculate mean
+var(data$y)  # calculate variance
+```
+
+### Compute ML by hand
+```{r}
+## Compute the product
+prod(dpois(data$y, lambda = 0.5))
+
+## Possible values of lambda
+possible.lambda <- seq(0, 3, by=0.1)
+
+## Write function
+compute_prob <- function(lambda, sim.data=data){
+  prod(dpois(sim.data$y, lambda = lambda))
+}
+
+## Apply function over each possible value
+sapply(possible.lambda, compute_prob)
+
+## Plot likelihood profile
+plot(x=possible.lambda, y=sapply(possible.lambda, compute_prob))
+```
+
+### Compute MLE using R
+```{r}
+## Write the  the log-likelihood function
+loglik <- function(sim.data=data$y, lambda) {
+sumlogprob <- sum(dpois(sim.data, lambda=lambda, log = TRUE))
+return(sumlogprob)}
+
+## Example of values
+loglik(1, sim.data=data$y)
+loglik(1.5, sim.data=data$y)
+loglik(2, sim.data=data$y)
+
+## Based on Bloker 2008 p173 (use control option to perform maximization)
+MLest <- optim(fn = loglik, par=c(lambda = 1), sim.data=data$y,  method = "BFGS", control = list(fnscale = -1))
+MLest$par
+MLest$value
+
+```
+
+### Compute MLE using R
+```{r}
+# fit into model for poisson 
+m0 <- glm(y ~ 1, family = poisson, data=data)  # fit Poisson regression model
+summary(m0)  # display model summary
+logLik(m0)
+coef(m0)
+exp(coef(m0))
+```
+
+
+# Normal distribution 
+Used to model continuous variables that follow a bell-shaped curve.
+Range: (-∞, +∞)
+Examples: Heights of individuals, weights of objects, errors in measurements
+Density function: <p>f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{(x-\mu)^2}{2\sigma^2}}</p>
+Graph: Bell-shaped curve
+Assumptions: Data is normally distributed and has equal variance
+Equations: E(X) = µ, Var(X) = σ²
+
+```{r, eval=FALSE}
+# Simulate some data with a normal distribution
+x <- rnorm(100, mean = 5, sd = 2)
+y <- 2*x + rnorm(100, mean = 0, sd = 1)
+
+# View the first 10 values of the simulated data
+head(x, 10)
+
+# If the class is numeric or integer, then the variable is likely continuous.
+class(x)
+
+# If the range of values is wide and the histogram shows a smooth distribution, then the variable is likely continuous.
+summary(x)
+h <- hist(x, xlim=c(0, 10), freq=TRUE)
+
+## Add PDF
+xfit <- seq(min(x), max(x), length=10)
+yfit <- dnorm(xfit , mean=mean(x), sd=sd(x))
+yfit <- yfit*diff(h$mids[1:2])*length(x)
+lines(xfit, yfit, col="blue", lwd=2) 
+
+# If the number of unique values is high and their frequency is evenly distributed, then the variable is likely continuous.
+unique(x)
+table(x)
+
+# Plot the PDF of the normal distribution
+curve(dnorm(x, mean = 5, sd = 2), from = 0, to = 10, 
+      main = "Normal Distribution", xlab = "x", ylab = "Density")
+
+# Plot the CDF of the normal distribution
+curve(pnorm(x, mean = 5, sd = 2), from = -10, to = 20, 
+      main = "Normal Distribution", xlab = "x", ylab = "Repartition")
+
+# Use pnorm to compute P[X=<q] based on the CDF
+pnorm(q=10, mean = 5, sd = 2) # quantile for x = 10 with mean 5 and sd 2
+
+# Compute the 25th and 75th percentiles, q, so that P[X=<q]=0.25 or P[X=<q]=0.75 based on the CDF 
+p1 <- 0.25
+p2 <- 0.75
+qnorm(c(p1, p2), mean = 5, sd = 2)
+
+# Check the results using pnorm()
+p1_check <- pnorm(q1, mean = 0, sd = 1)
+p2_check <- pnorm(q2, mean = 0, sd = 1)
+
+# Print the results
+cat(sprintf("%d%% quantile: %.2f\n", p1*100, q1))
+cat(sprintf("%d%% quantile: %.2f\n", p2*100, q2))
+cat(sprintf("Check: %.2f == %.2f, %.2f == %.2f\n", p1, p1_check, p2, p2_check))
+
+# Create a QQ plot to assess normality
+plot(y)
+qqnorm(y)
+plot.new()  # initialize a new plotting window
+qqline(y) # why error 
+
+# Conduct a Shapiro-Wilk test of normality
+shapiro.test(y)
+
+# Fit a linear model to the data
+model <- lm(y ~ x)
+
+# Print the model summary
+summary(model)
+
+# Plot the data and the fitted line
+plot(x, y)
+abline(model) # why error
+```
+
+# Binomial distribution 
+Used to model the probability of a binary outcome (success or failure) in a fixed number of trials
+Range: {0, 1, 2, ..., n}
+Examples: Flipping a coin a certain number of times and counting the number of heads, the number of defective items in a sample of products
+Probability mass function: P(X=k) = (n choose k) p^k (1-p)^(n-k)
+Graph: Symmetrical distribution
+Assumptions: Trials are independent and have the same probability of success
+Equations: E(X) = np, Var(X) = np(1-p)
+
+```{r, eval=FALSE}
+# Simulate data with rbinom
+set.seed(123)  # for reproducibility
+
+# Number of trials
+N <- 10
+p <- 0.3
+data <- rbinom(n = 100, size = N , prob = p)
+
+# create PDF & CDF
+x <- 0:10  # define possible values
+prob <- dbinom(x, size = N, prob = p)  # calculate probabilities
+
+# Plot PDF
+library(ggplot2)  # load ggplot2 package
+ggplot(data.frame(x, prob), aes(x, prob)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Probability Density Function", x = "Count", y = "Probability")
+
+#create CDF
+q = 0:10
+prob2 = pbinom(q, size = N, prob = p)
+#curve(pbinom(q, size = 10, prob), from = -10, to = 20, main = "Binomial Distribution", xlab = "x", ylab = "Distribution")
+
+#Plot CDF
+ggplot(data.frame(x, prob2), aes(x, prob2)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Binomial Distribution", x = "Count", y = "Distribution")
+
+# Fit a binomial model
+fit <- glm(cbind(data, 10 - data) ~ 1, family = binomial)  # fit binomial model
+
+# Calculate the expected frequencies
+expected <- 100 * dbinom(0:10, size = 10, prob = 0.3)  # calculate expected frequencies
+
+# Calculate the observed values
+observed <- table(data)  # count occurrences of each value
+observed <- as.numeric(observed[match(0:10, names(observed))])  # convert to vector and match with possible values
+
+# Error checking and printing
+print(observed)
+observed <- na.omit(x)
+
+# Perform the chi-squared goodness-of-fit test
+chisq.test(observed, p = expected/100)  # perform chi-squared goodness-of-fit test with expected frequencies
+
+## Arcsin transformation
+asindata <- asin(sqrt(data/N))
+
+hist(asindata)
+
+## Observed mean
+mean(asindata)
+
+## Expected mean
+asin(sqrt(p))
+
+## Observed variance
+var(asindata)
+
+## Expected mean
+1/(4*N)
+
+
+
+```
+
+# Maximum Likelihood for Poisson distribution
+## By hand
+```{r}
+
+lambda <- 1.8
+k <- 0
+
+(prob <- (lambda^k * exp(-lambda))/factorial(k))
+dpois(x = k, lambda = lambda)
+
+data <- rpois(n = 100, lambda = lambda)
+
+lambda_hat <- 2.9
+
+
+LL_compute <- function(lambda_hat, dat){
+  LL <- 0
+  for (k in dat){
+  LL <- LL + log((lambda_hat^k * exp(-lambda_hat))/factorial(k))
+  }
+  return(LL)
+}
+
+
+
+LL_compute(dat=data, lambda_hat=2.9)
+
+val <- seq(0, 10, by=0.1)
+LL <- sapply(X = val, LL_compute, dat=data)
+
+plot(x= seq(0, 10, by=0.1), y=LL, xlab="lambda_hat", ylab="Log-likelihood")
+abline(v=lambda, col="black")
+abline(h=LL[val==lambda], col="black")
+abline(v=val[LL==max(LL)], col="red")
+abline(h=max(LL), col="red")
+text(x=val[LL==max(LL)], y=max(LL)-100, labels=paste("lambda_hat", val[LL==max(LL)], sep="="), col="red")
+text(x=lambda+1, y=LL[val==lambda]-125, labels=paste("lambda", lambda, sep="="), col="black")
+
+
+## Compute lambda_hat using R 
+m <- glm(data ~ 1, family = poisson)
+## Display model summary
+summary(m)
+exp(coef(m))
+
+```
+
+## Analytical derivation
+```{r}
+
+LL_compute2 <- function(lambda_hat, dat){
+  return(-sum(dpois(x = dat, lambda = lambda_hat, log = TRUE)))
+}
+LL_compute2(dat=data, lambda_hat=2.9)
+
+## Based on Bloker 2008 p173
+opt1 <- optim(fn = LL_compute2, par=c(lambda_hat=1), dat=data, method = "BFGS")
+opt1$par
+
+
+```
