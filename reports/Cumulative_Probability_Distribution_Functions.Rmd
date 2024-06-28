@@ -168,6 +168,18 @@ summary(m0)  # display model summary
 logLik(m0)
 coef(m0)
 exp(coef(m0))
+
+data$obs <- as.factor(1:nrow(data))
+m1 <- glm(y ~ obs, family = poisson, data=data) 
+summary(m1)  # display model summary
+logLik(m1)
+coef(m1)
+exp(coef(m0))
+
+dev0 <- -2 *logLik(m0)
+dev1 <- -2 *logLik(m1)
+
+dev0-dev1
 ```
 
 

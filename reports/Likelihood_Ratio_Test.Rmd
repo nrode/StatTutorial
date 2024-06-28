@@ -1,0 +1,110 @@
+---
+title: "Likelihood ratio tests"
+author: "Nicolas Rode"
+date: "`r format(Sys.Date(), '%d-%B-%Y')`"
+output: 
+  html_document:
+    theme: "journal"
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r }
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+```
+
+# Simulate data
+```{r}
+# Simulate data with rpois
+set.seed(123)  # for reproducibility
+data <- data.frame(y=rpois(n = 5, lambda = 1))
+
+# If the minimum value is zero or a positive integer, then the variable might be a count variable.
+min(data)  # check minimum value
+
+## Check probability of each type of event
+table(data)  # count occurrences of each value
+prop.table(table(data))  # calculate proportion of occurrences
+
+
+## Plot observed distribution and expected PDF
+p <- data %>%
+  ggplot2::ggplot(aes(y)) + 
+  geom_histogram(aes(y = after_stat(count / sum(count))), fill = "orange", alpha = 0.2, binwidth = 0.25)+
+  labs(title = "Probability Mass Function", x = "Value taken by X", y = "Proportion of events") + 
+  stat_function(geom = "point", n = 4, fun = dpois, args = list(lambda = 1), color = "orange")
+p
+
+# check mean and variance are equal or not
+mean(data$y)  # calculate mean
+var(data$y)  # calculate variance
+```
+
+# Compare models
+```{r}
+# fit into model for poisson 
+m0 <- glm(y ~ 1, family = poisson, data=data)  # fit Poisson regression model
+summary(m0)  # display model summary
+logLik(m0)
+coef(m0)
+exp(coef(m0))
+
+## Fit second model with more parameters
+data$obs <- as.factor(1:nrow(data))
+m1 <- glm(y ~ obs, family = poisson, data=data) 
+summary(m1)  # display model summary
+logLik(m1)
+coef(m1)
+exp(coef(m0))
+
+
+## We want to test H1 that m1 describes the data better than m0
+
+## Compute devances of the two model
+dev0 <- -2 *logLik(m0)
+dev1 <- -2 *logLik(m1)
+
+## Compute difference in deviance which follows a Chisq disitribution of parameter p1-p0
+dev0-dev1
+
+## Compute the probability to observe a value lower than dev0-dev1
+pchisq(q=dev0-dev1, df=4)
+
+## !!! We want the probability to be as high as dev0-dev1 or higher
+1-pchisq(q=dev0-dev1, df=4)
+
+## Same computation with R
+anova(m0, m1, test="Chisq")
+
+##Cl: we cannot reject the null hypothesis, so that m1 does not describe the data better than m0
+```
+
+# Graphical representation of the LRT
+```{r}
+
+dchisq(x=0, df=4)
+
+p <- ggplot(data.frame(x = 0:20), aes(x)) +
+    stat_function(geom = "point", n = 21, fun = dchisq, args = list(df = 4), color = "orange")+
+    annotate("text", x=10, y=0.35, label= "dev0 - dev1 == 4", parse = TRUE, color = "orange")+
+  xlab(bquote(x[i]))+ 
+  ylab(bquote(P(X==x[i])))
+p
+
+p1 <- p + geom_vline(xintercept = dev0-dev1)
+p1
+
+## Représente the area under the curve corresping to values as high as dev0-dev1 or higher
+p1 <- p +
+  stat_function(geom = "area", aes(x), n = 4, fun = dchisq, args = list(df = 4), xlim = c(dev0-dev1, 20), fill = "orange", alpha = 0.5)
+p1
+
+```
